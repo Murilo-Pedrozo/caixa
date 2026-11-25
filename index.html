@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Meu Caixa</title>
+<meta name="theme-color" content="#2D5CD3">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Meu Caixa">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l5-5 4 4 7-8"/><path d="M15 8h5v5"/></svg>
+      </div>
+      <h1>Meu Caixa</h1>
+    </div>
+    <div class="head-actions">
+      <div class="month" aria-label="Mês">
+        <button type="button" id="prevMonth" aria-label="Mês anterior">‹</button>
+        <div class="month-label" id="monthLabel">—</div>
+        <button type="button" id="nextMonth" aria-label="Próximo mês">›</button>
+      </div>
+      <button type="button" class="theme-btn" id="themeBtn" aria-label="Ativar modo escuro" title="Modo escuro">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>
+      </button>
+    </div>
+  </div>
+  <nav class="tabs" aria-label="Telas">
+    <div class="tabs-in">
+      <button type="button" class="tab on" data-view="resumo">Resumo</button>
+      <button type="button" class="tab" data-view="lancar">Lançar</button>
+      <button type="button" class="tab" data-view="extrato">Extrato</button>
+      <button type="button" class="tab" data-view="patrimonio">Patrimônio</button>
+      <button type="button" class="tab" data-view="backup">Ajustes</button>
+    </div>
+  </nav>
+</header>
+
+<main class="wrap">
+  <div id="demoBar" class="notice demo" hidden>
+    <span>Você está vendo <b>dados de exemplo</b>. Nada disso é seu e nada é salvo.</span>
+    <button type="button" class="btn small dark" id="exitDemo">Voltar aos meus dados</button>
+  </div>
+  <div id="notice" class="notice" hidden></div>
+  <div id="cardNotice" class="notice warn" hidden>
+    <span>Confira o dia em que a fatura do seu cartão fecha e vence, para as compras caírem no mês certo.</span>
+    <button type="button" class="btn small danger" data-goto="backup">Configurar cartão</button>
+  </div>
+
+  <!-- ===================== RESUMO ===================== -->
+  <section class="view" id="v-resumo">
+    <div id="status" class="status neutral"><div class="txt"><span>Carregando seus dados…</span></div></div>
+
+    <div class="kpis">
+      <div class="kpi in"><div class="k"><i class="c-in"></i>Entrou</div><div class="v" id="kIn">R$ 0,00</div><small id="kInSub">—</small></div>
+      <div class="kpi out"><div class="k"><i class="c-out"></i>Gastei</div><div class="v" id="kOut">R$ 0,00</div><small id="kOutSub">—</small></div>
+      <div class="kpi"><div class="k"><i class="c-inv"></i>Guardei / investi</div><div class="v" id="kInv">R$ 0,00</div><small id="kInvSub">—</small></div>
+      <div class="kpi left" id="kLeftCard"><div class="k">Sobrou</div><div class="v" id="kLeft">R$ 0,00</div><small id="kLeftSub">entrou − gastos − guardado</small></div>
+    </div>
+
+    <div class="card fatura" id="faturaCard">
+      <div class="card-h"><h2>Fatura do cartão</h2><small id="fatStatus"></small></div>
+      <div class="fat-grid">
+        <div class="fat-main">
+          <span class="label" id="fatLabel">Vence em —</span>
+          <div class="fat-v" id="fatValue">R$ 0,00</div>
+          <small id="fatSub"></small>
+        </div>
+        <div class="fat-next">
+          <span class="label" id="fatNextLabel">Próxima fatura</span>
+          <div class="fat-v2" id="fatNext">R$ 0,00</div>
+          <small id="fatNextSub">já lançado até agora</small>
+        </div>
+      </div>
+      <div class="forecast" id="forecast" hidden>
+        <div class="fc-head"><b id="fcTitle">Previsão</b><small>simulação · não altera seus lançamentos</small></div>
+        <div class="fc-rows">
+          <div class="fc-edit">
+            <label for="fcSalary" id="fcSalaryLabel">Salário previsto</label>
+            <div class="money-in sm"><span>R$</span><input id="fcSalary" class="in" type="text" inputmode="decimal" placeholder="0,00"></div>
+          </div>
+          <div class="minus"><span id="fcInvLabel">− Fatura do cartão</span><b id="fcInv">R$ 0,00</b></div>
+
+          <div class="fc-sub">− Gastos fixos <small>(toque para tirar ou pôr na conta)</small></div>
+          <div id="fcFixed"></div>
+          <form class="fc-add" id="fcAddForm" autocomplete="off">
+            <input id="fcNewName" class="in" type="text" maxlength="40" placeholder="Novo gasto fixo, ex.: Faculdade" aria-label="Nome do gasto fixo">
+            <div class="money-in sm"><span>R$</span><input id="fcNewValue" class="in" type="text" inputmode="decimal" placeholder="0,00" aria-label="Valor do gasto fixo"></div>
+            <button type="submit" class="btn small primary">Adicionar</button>
+          </form>
+
+          <div class="fc-edit">
+            <label for="fcExtra">− Outros gastos que você imagina</label>
+            <div class="money-in sm"><span>R$</span><input id="fcExtra" class="in" type="text" inputmode="decimal" placeholder="0,00"></div>
+          </div>
+
+          <div class="result"><span id="fcResultLabel">Sobra no mês</span><b id="fcResult">R$ 0,00</b></div>
+          <div class="fc-bar" id="fcBar" role="img" aria-label="Divisão do salário">
+            <i class="seg-inv" id="fcBarInv"></i><i class="seg-fix" id="fcBarFix"></i>
+          </div>
+          <div class="fc-legend">
+            <span><i class="seg-inv"></i>Fatura</span><span><i class="seg-fix"></i>Fixos e outros</span><span><i class="seg-left"></i>Sobra</span>
+          </div>
+        </div>
+        <p class="fc-note" id="fcNote"></p>
+        <p class="hint">Gasto fixo pago no cartão (ex.: streaming) já está na fatura: não precisa adicionar aqui.</p>
+        <button type="button" class="btn small ghost" id="fcReset" style="margin-top:10px">Desfazer mudanças da simulação</button>
+      </div>
+      <div id="fatList"></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>Como paguei</h2><small>gastos do mês</small></div>
+        <div class="bars" id="byMethod"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Com o que gastei</h2><small>por categoria</small></div>
+        <div class="bars" id="byCat"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Últimos 6 meses</h2><small>entradas, gastos e o que sobrou</small></div>
+      <div id="trend"></div>
+      <div class="legend">
+        <span><i class="c-in"></i>Entrou</span>
+        <span><i class="c-out"></i>Gastei</span>
+        <span><i class="line"></i>Sobrou</span>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>De onde veio</h2><small>entradas do mês</small></div>
+        <div class="bars" id="byIncome"></div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Patrimônio</h2><small id="patriDate"></small></div>
+        <div class="bars" id="patriMini"></div>
+        <button type="button" class="btn ghost small" data-goto="patrimonio" style="margin-top:12px">Ver investimentos</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LANÇAR ===================== -->
+  <section class="view" id="v-lancar" hidden>
+    <div class="grid2">
+      <form class="card" id="txForm" autocomplete="off">
+        <div id="editBar" class="editing" hidden>
+          <span>Editando lançamento</span>
+          <button type="button" class="btn small ghost" id="cancelEdit">Cancelar</button>
+        </div>
+        <div class="seg" role="tablist" aria-label="Tipo de lançamento">
+          <button type="button" data-type="gasto" class="on">Gasto</button>
+          <button type="button" data-type="entrada">Entrada</button>
+          <button type="button" data-type="invest">Guardei / investi</button>
+        </div>
+
+        <div class="form">
+          <div class="full">
+            <label class="label" for="fAmount">Valor</label>
+            <div class="money-in big"><span>R$</span><input id="fAmount" class="in" type="text" inputmode="decimal" placeholder="0,00" required></div>
+          </div>
+          <div>
+            <label class="label" for="fDate">Data</label>
+            <input id="fDate" class="in" type="date">
+          </div>
+          <div>
+            <label class="label" for="fCat">Categoria</label>
+            <select id="fCat" class="in"></select>
+          </div>
+          <div class="full" id="fCatNewWrap" hidden>
+            <label class="label" for="fCatNew">Nome da nova categoria</label>
+            <input id="fCatNew" class="in" type="text" maxlength="40" placeholder="Ex.: Pet">
+          </div>
+          <div class="full">
+            <label class="label" for="fDesc">Descrição <span style="text-transform:none;letter-spacing:0;font-weight:500">(opcional)</span></label>
+            <input id="fDesc" class="in" type="text" maxlength="80" placeholder="Ex.: Pague Menos, presente da mãe">
+          </div>
+          <div class="full" id="methodWrap">
+            <span class="label" id="methodLabel">Forma de pagamento</span>
+            <div class="chips" id="fMethods"></div>
+          </div>
+          <div class="full" id="parcWrap">
+            <label class="label" for="fParc">Parcelas</label>
+            <select id="fParc" class="in"></select>
+            <p class="hint" id="parcInfo"></p>
+          </div>
+        </div>
+        <p class="hint strong" id="formHint" style="margin-top:12px"></p>
+        <button type="submit" class="btn primary block" id="saveTx" style="margin-top:12px">Salvar gasto</button>
+      </form>
+
+      <div class="card">
+        <div class="card-h"><h2>Últimos lançados</h2><small>mais recentes primeiro</small></div>
+        <div id="recent"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== EXTRATO ===================== -->
+  <section class="view" id="v-extrato" hidden>
+    <div class="card">
+      <div class="seg" id="fType">
+        <button type="button" data-f="all" class="on">Tudo</button>
+        <button type="button" data-f="entrada">Entradas</button>
+        <button type="button" data-f="gasto">Gastos</button>
+        <button type="button" data-f="invest">Guardado</button>
+      </div>
+
+      <div class="search-row">
+        <input id="fSearch" class="in" type="search" placeholder="Buscar descrição ou categoria" aria-label="Buscar">
+        <button type="button" class="btn ghost" id="toggleFilters" aria-expanded="false" aria-controls="filterPanel">Filtros <span class="badge" id="filterCount" hidden>0</span></button>
+      </div>
+
+      <div class="filter-panel" id="filterPanel" hidden>
+        <div class="fp-grid">
+          <div>
+            <label class="label" for="fPeriod">Período</label>
+            <select id="fPeriod" class="in">
+              <option value="month">Mês escolhido no topo</option>
+              <option value="3m">Últimos 3 meses</option>
+              <option value="6m">Últimos 6 meses</option>
+              <option value="year">O ano inteiro</option>
+              <option value="all">Tudo</option>
+              <option value="custom">De um mês até outro…</option>
+            </select>
+          </div>
+          <div id="fRangeWrap" class="fp-range" hidden>
+            <div>
+              <label class="label" for="fFrom">De</label>
+              <input id="fFrom" class="in" type="month">
+            </div>
+            <div>
+              <label class="label" for="fTo">Até</label>
+              <input id="fTo" class="in" type="month">
+            </div>
+          </div>
+          <div>
+            <label class="label" for="fCatFilter">Categoria</label>
+            <select id="fCatFilter" class="in"></select>
+          </div>
+          <div>
+            <label class="label" for="fMethodFilter">Forma de pagamento</label>
+            <select id="fMethodFilter" class="in"></select>
+          </div>
+          <div class="fp-range">
+            <div>
+              <label class="label" for="fMin">Valor mínimo</label>
+              <div class="money-in"><span>R$</span><input id="fMin" class="in" type="text" inputmode="decimal" placeholder="0,00"></div>
+            </div>
+            <div>
+              <label class="label" for="fMax">Valor máximo</label>
+              <div class="money-in"><span>R$</span><input id="fMax" class="in" type="text" inputmode="decimal" placeholder="sem limite"></div>
+            </div>
+          </div>
+          <div>
+            <label class="label" for="fSort">Ordenar por</label>
+            <select id="fSort" class="in">
+              <option value="date-desc">Data (mais recentes primeiro)</option>
+              <option value="date-asc">Data (mais antigos primeiro)</option>
+              <option value="value-desc">Valor (maiores primeiro)</option>
+              <option value="value-asc">Valor (menores primeiro)</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" class="btn small ghost" id="clearFilters" style="margin-top:12px">Limpar filtros</button>
+      </div>
+
+      <div class="list-head">
+        <div>
+          <p class="period-txt" id="periodTxt"></p>
+          <div class="totals" id="listTotals"></div>
+        </div>
+        <button type="button" class="btn primary" id="btnPdf">Gerar PDF</button>
+      </div>
+      <div id="txList"></div>
+    </div>
+  </section>
+
+  <!-- ===================== PATRIMÔNIO ===================== -->
+  <section class="view" id="v-patrimonio" hidden>
+    <div class="kpis three">
+      <div class="kpi"><div class="k">Valor aplicado</div><div class="v" id="pApplied">R$ 0,00</div><small>o que você colocou</small></div>
+      <div class="kpi in"><div class="k">Valor atual</div><div class="v" id="pCurrent">R$ 0,00</div><small id="pCount">—</small></div>
+      <div class="kpi left" id="pGainCard"><div class="k">Rendimento</div><div class="v" id="pGain">R$ 0,00</div><small id="pGainSub">—</small></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>Por tipo</h2><small>valor atual</small></div>
+        <div class="bars" id="byKind"></div>
+      </div>
+      <form class="card" id="invForm" autocomplete="off">
+        <div id="invEditBar" class="editing" hidden>
+          <span>Atualizando investimento</span>
+          <button type="button" class="btn small ghost" id="cancelInvEdit">Cancelar</button>
+        </div>
+        <div class="card-h"><h2 id="invFormTitle">Adicionar investimento</h2></div>
+        <div class="form" style="margin-top:0">
+          <div class="full">
+            <label class="label" for="iName">Nome</label>
+            <input id="iName" class="in" type="text" maxlength="80" placeholder="Ex.: CDB liquidez diária" required>
+          </div>
+          <div class="full">
+            <label class="label" for="iKind">Tipo</label>
+            <select id="iKind" class="in"></select>
+          </div>
+          <div>
+            <label class="label" for="iApplied">Valor aplicado</label>
+            <div class="money-in"><span>R$</span><input id="iApplied" class="in" type="text" inputmode="decimal" placeholder="0,00"></div>
+          </div>
+          <div>
+            <label class="label" for="iCurrent">Valor atual</label>
+            <div class="money-in"><span>R$</span><input id="iCurrent" class="in" type="text" inputmode="decimal" placeholder="0,00"></div>
+          </div>
+          <div class="full">
+            <label class="label" for="iNote">Observação <span style="text-transform:none;letter-spacing:0;font-weight:500">(opcional)</span></label>
+            <input id="iNote" class="in" type="text" maxlength="80" placeholder="Ex.: vence 12/05/2027, 68 dólares">
+          </div>
+        </div>
+        <button type="submit" class="btn primary block" id="saveInv" style="margin-top:14px">Adicionar</button>
+        <p class="hint">Atualize o <b>valor atual</b> quando olhar o app do banco. O rendimento é calculado sozinho.</p>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Meus investimentos e reservas</h2><small>aplicado → atual</small></div>
+      <div id="invList"></div>
+    </div>
+  </section>
+
+  <!-- ===================== BACKUP ===================== -->
+  <section class="view" id="v-backup" hidden>
+    <form class="card" id="cardForm" autocomplete="off">
+      <div class="card-h"><h2>Cartão de crédito</h2><small>fechamento e vencimento da fatura</small></div>
+      <div class="form" style="margin-top:0">
+        <div>
+          <label class="label" for="cClosing">Dia em que a fatura fecha</label>
+          <input id="cClosing" class="in" type="text" inputmode="numeric" maxlength="2" placeholder="27">
+        </div>
+        <div>
+          <label class="label" for="cDue">Dia em que a fatura vence</label>
+          <input id="cDue" class="in" type="text" inputmode="numeric" maxlength="2" placeholder="5">
+        </div>
+        <label class="check full"><input type="checkbox" id="cByInvoice"> Contar as compras no crédito no mês em que a fatura vence</label>
+      </div>
+      <p class="hint strong" id="cExample" style="margin-top:12px"></p>
+      <p class="hint">Compras feitas no dia do fechamento ou depois vão para a fatura seguinte. Os dois dias aparecem no app do seu banco.</p>
+      <button type="submit" class="btn primary" style="margin-top:12px">Salvar cartão</button>
+    </form>
+
+    <div class="card">
+      <div class="card-h"><h2>Aparência</h2><small>vale só para este aparelho</small></div>
+      <label class="check"><input type="checkbox" id="darkTheme"> Usar tema escuro</label>
+      <p class="hint">Também dá para trocar pelo botão de lua/sol no topo da tela.</p>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h2>Salvar uma cópia</h2><small>deste aparelho</small></div>
+        <div class="stat-rows" id="bkInfo"></div>
+        <label class="label" for="deviceName" style="margin-top:16px">Nome deste aparelho</label>
+        <input id="deviceName" class="in" type="text" maxlength="30" placeholder="Ex.: celular, notebook">
+        <p class="hint">Vai no nome do arquivo, para você saber de onde veio cada backup.</p>
+        <div class="actions" style="margin-top:14px">
+          <button type="button" class="btn primary" id="btnExport">Baixar backup</button>
+          <button type="button" class="btn ghost" id="btnShare" hidden>Enviar (WhatsApp, Drive…)</button>
+        </div>
+        <p class="hint" id="bkLast"></p>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2>Juntar backups</h2><small>sem apagar nada</small></div>
+        <p class="hint" style="margin-top:0">Escolha um ou mais arquivos de backup (do celular, do computador…). O que é novo entra, o que foi editado fica com a versão mais recente e o que foi excluído continua excluído. Juntar o mesmo arquivo duas vezes não duplica nada.</p>
+        <button type="button" class="btn dark block" id="btnImport" style="margin-top:14px">Escolher arquivos de backup</button>
+        <input type="file" id="importFile" accept=".json,application/json" multiple hidden>
+        <div id="importResult" class="notice ok" style="margin-top:12px" hidden></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Como usar no celular e no computador</h2></div>
+      <ol class="steps">
+        <li>No <b>computador</b>, toque em <b>Baixar backup</b>.</li>
+        <li>No <b>celular</b>, toque em <b>Baixar backup</b> (ou <b>Enviar</b> e mande para você no WhatsApp ou Drive).</li>
+        <li>No computador, use <b>Juntar backups</b> e escolha o arquivo do celular. Agora o computador tem tudo dos dois.</li>
+        <li>Baixe um backup novo no computador e junte no celular, para o celular também ficar completo.</li>
+      </ol>
+      <p class="hint" style="margin-top:12px">Os dados ficam guardados no navegador de cada aparelho. Se você limpar os dados do navegador ou trocar de navegador, eles somem dali, então baixe um backup de vez em quando.</p>
+    </div>
+  </section>
+
+  <p class="foot" id="storeNote"></p>
+</main>
+
+
+<!-- Relatório para PDF: só aparece na hora de imprimir / salvar em PDF -->
+<section id="report" class="report" aria-hidden="true"></section>
+
+<div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
