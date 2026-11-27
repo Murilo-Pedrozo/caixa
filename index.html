@@ -68,7 +68,7 @@
       <div class="kpi in"><div class="k"><i class="c-in"></i>Entrou</div><div class="v" id="kIn">R$ 0,00</div><small id="kInSub">—</small></div>
       <div class="kpi out"><div class="k"><i class="c-out"></i>Gastei</div><div class="v" id="kOut">R$ 0,00</div><small id="kOutSub">—</small></div>
       <div class="kpi"><div class="k"><i class="c-inv"></i>Guardei / investi</div><div class="v" id="kInv">R$ 0,00</div><small id="kInvSub">—</small></div>
-      <div class="kpi left" id="kLeftCard"><div class="k">Sobrou</div><div class="v" id="kLeft">R$ 0,00</div><small id="kLeftSub">entrou − gastos − guardado</small></div>
+      <div class="kpi left" id="kLeftCard"><div class="k">Sobrou na conta</div><div class="v" id="kLeft">R$ 0,00</div><small id="kLeftSub">entrou − gastos − guardado</small></div>
     </div>
 
     <div class="card" id="walletCard">
@@ -145,7 +145,7 @@
       <div class="legend">
         <span><i class="c-in"></i>Entrou</span>
         <span><i class="c-out"></i>Gastei</span>
-        <span><i class="line"></i>Sobrou</span>
+        <span><i class="line"></i>Sobrou na conta</span>
       </div>
     </div>
 
@@ -422,7 +422,7 @@
         <div class="card-h"><h2>Juntar backups</h2><small>sem apagar nada</small></div>
         <p class="hint" style="margin-top:0">Escolha um ou mais arquivos de backup (do celular, do computador…). O que é novo entra, o que foi editado fica com a versão mais recente e o que foi excluído continua excluído. Juntar o mesmo arquivo duas vezes não duplica nada.</p>
         <button type="button" class="btn dark block" id="btnImport" style="margin-top:14px">Escolher arquivos de backup</button>
-        <input type="file" id="importFile" accept=".json,application/json" multiple hidden>
+        <input type="file" id="importFile" accept=".json,.txt,application/json,text/plain" multiple hidden>
         <div id="importResult" class="notice ok" style="margin-top:12px" hidden></div>
       </div>
     </div>

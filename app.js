@@ -93,7 +93,7 @@ function toast(msg, kind) {
   el.className = 'toast' + (kind === 'err' ? ' err' : '');
   el.hidden = false;
   clearTimeout(toast.t);
-  toast.t = setTimeout(() => { el.hidden = true; }, 2600);
+  toast.t = setTimeout(() => { el.hidden = true; }, msg.length > 80 ? 6000 : 2600);
 }
 function showNotice(msg) { const n = $('notice'); n.textContent = msg; n.hidden = !msg; }
 
@@ -361,6 +361,17 @@ function sums(list) {
     }
   }
   s.sobra = s.entrou - s.saiu - s.investiu;
+  // "Sobrou" considera só a conta: o que é em dinheiro (e no vale) fica separado
+  s.contaIn = 0; s.contaOut = 0; s.sobraConta = 0; s.cash = 0; s.cashOut = 0; s.vale = 0;
+  for (const t of list) {
+    const dc = walletDelta(t, 'conta');
+    s.sobraConta += dc;
+    if (t.type === 'entrada' && dc > 0) s.contaIn += dc;
+    if (t.type === 'gasto' && dc < 0) s.contaOut -= dc;
+    s.cash += walletDelta(t, 'dinheiro');
+    if (t.type === 'gasto' && walletOf(t) === 'dinheiro') s.cashOut += parseNum(t.amount);
+    s.vale += walletDelta(t, 'vale');
+  }
   return s;
 }
 
@@ -396,7 +407,7 @@ function niceStep(raw) {
 
 function trendSvg(ym) {
   const months = Array.from({ length: 6 }, (_, i) => addMonths(ym, i - 5));
-  const data = months.map((m) => { const s = sums(monthTx(m)); return { m, inn: s.entrou, out: s.saiu, left: s.sobra, n: s.count }; });
+  const data = months.map((m) => { const s = sums(monthTx(m)); return { m, inn: s.entrou, out: s.saiu, left: s.sobraConta, n: s.count }; });
   if (!data.some((d) => d.n)) return '<p class="empty">O gráfico aparece quando houver lançamentos.</p>';
 
   // Desenha na largura real do cartão, para o texto ficar sempre do mesmo tamanho
@@ -483,18 +494,15 @@ function renderResumo() {
   $('kInSub').textContent = topIn || 'nenhuma entrada';
   $('kOut').textContent = brl(s.saiu);
   $('kOutSub').textContent = s.saiu
-    ? `${brl(s.byMethod.credito || 0)} ${S.card.byInvoice ? 'da fatura do cartão' : 'no crédito'}`
+    ? [`${brl(s.byMethod.credito || 0)} ${S.card.byInvoice ? 'da fatura' : 'no crédito'}`, s.cashOut ? `${brl(s.cashOut)} em dinheiro` : ''].filter(Boolean).join(' · ')
     : 'nenhum gasto';
   $('kInv').textContent = brl(s.investiu);
   $('kInvSub').textContent = s.entrou && s.investiu ? `${pct(s.investiu / s.entrou)} do que entrou` : 'nada guardado';
-  $('kLeft').textContent = brl(s.sobra);
-  const wr = walletReport(S.month);
-  const wc = wr.find((r) => r.w === 'conta');
-  const wd = wr.find((r) => r.w === 'dinheiro');
+  $('kLeft').textContent = brl(s.sobraConta);
   $('kLeftSub').textContent = s.count
-    ? `conta ${brl(wc.net)} · dinheiro ${brl(wd.net)}`
-    : 'entrou − gastos − guardado';
-  $('kLeftCard').classList.toggle('neg', s.sobra < -0.004);
+    ? `só a conta · dinheiro à parte: ${s.cash >= 0 ? '+' : '−'}${brl(Math.abs(s.cash))}`
+    : 'só a conta, sem o dinheiro';
+  $('kLeftCard').classList.toggle('neg', s.sobraConta < -0.004);
 
   // Aviso principal: saiu mais do que entrou?
   const st = $('status');
@@ -507,18 +515,18 @@ function renderResumo() {
       <small>Comece pela aba Lançar: salário, bicos, gastos do cartão, Pix…</small></div>
       <div class="actions"><button type="button" class="btn small primary" data-goto="lancar">Fazer o primeiro lançamento</button>
       ${S.demo ? '' : '<button type="button" class="btn small ghost" id="seeDemo">Ver com dados de exemplo</button>'}</div>`;
-  } else if (s.saiu > s.entrou + 0.004) {
+  } else if (s.contaOut > s.contaIn + 0.004) {
     st.className = 'status bad';
-    st.innerHTML = `<span class="dot"></span><div class="txt"><span>Saiu mais dinheiro do que entrou em ${esc(name)}.</span>
-      <small>Os gastos passaram as entradas em ${esc(brl(s.saiu - s.entrou))}${s.investiu ? `, sem contar os ${esc(brl(s.investiu))} guardados` : ''}.</small></div>`;
-  } else if (s.sobra < -0.004) {
+    st.innerHTML = `<span class="dot"></span><div class="txt"><span>Saiu mais da conta do que entrou em ${esc(name)}.</span>
+      <small>Os gastos na conta e no cartão passaram as entradas em ${esc(brl(s.contaOut - s.contaIn))}${s.investiu ? `, sem contar os ${esc(brl(s.investiu))} guardados` : ''}.</small></div>`;
+  } else if (s.sobraConta < -0.004) {
     st.className = 'status warn';
-    st.innerHTML = `<span class="dot"></span><div class="txt"><span>Os gastos couberam, mas você guardou mais do que sobrou.</span>
-      <small>Faltaram ${esc(brl(-s.sobra))}: esse valor saiu do que você já tinha antes.</small></div>`;
+    st.innerHTML = `<span class="dot"></span><div class="txt"><span>Os gastos couberam, mas a conta fechou no negativo.</span>
+      <small>Faltaram ${esc(brl(-s.sobraConta))} por causa do que você guardou ou sacou: esse valor saiu do que já tinha antes.</small></div>`;
   } else {
     st.className = 'status good';
-    st.innerHTML = `<span class="dot"></span><div class="txt"><span>Entrou mais do que saiu em ${esc(name)}.</span>
-      <small>Depois dos gastos e do que você guardou, sobraram ${esc(brl(s.sobra))}.</small></div>`;
+    st.innerHTML = `<span class="dot"></span><div class="txt"><span>Entrou mais do que saiu da conta em ${esc(name)}.</span>
+      <small>Depois dos gastos, do cartão e do que você guardou, sobraram ${esc(brl(s.sobraConta))} na conta. O dinheiro em espécie está no quadro abaixo.</small></div>`;
   }
 
   renderWallets();
@@ -809,7 +817,7 @@ function filtersDescription() {
 function buildReport() {
   const list = filteredTx();
   const s = sums(list);
-  const left = s.entrou - s.saiu - s.investiu;
+  const left = s.sobraConta;
   const r = filterRange();
   const multiMonth = !r || r[0] !== r[1];
   const now = new Date();
@@ -850,7 +858,7 @@ function buildReport() {
       <div class="r-kpi in"><span>Entradas</span><b>${esc(brl(s.entrou))}</b></div>
       <div class="r-kpi out"><span>Gastos</span><b>${esc(brl(s.saiu))}</b></div>
       <div class="r-kpi"><span>Guardado / investido</span><b>${esc(brl(s.investiu))}</b></div>
-      <div class="r-kpi left${left < 0 ? ' neg' : ''}"><span>${left < 0 ? 'Faltou' : 'Sobrou'}</span><b>${esc(brl(Math.abs(left)))}</b></div>
+      <div class="r-kpi left${left < 0 ? ' neg' : ''}"><span>${left < 0 ? 'Faltou na conta' : 'Sobrou na conta'}</span><b>${esc(brl(Math.abs(left)))}</b></div>
     </div>
     <div class="r-two">
       <div><h2>Gastos por categoria</h2><table><thead><tr><th>Categoria</th><th class="n">Valor</th><th class="n">%</th></tr></thead><tbody>${rows(s.byCat, null, s.saiu)}</tbody></table></div>
@@ -1278,14 +1286,18 @@ function exportBackup() {
 async function shareBackup() {
   if (S.demo) { toast('Saia dos dados de exemplo antes de fazer backup.', 'err'); return; }
   const { name, text } = buildBackup();
+  // Celulares só deixam compartilhar alguns tipos de arquivo: .json não está entre eles, .txt está
+  const file = new File([text], name.replace(/\.json$/, '.txt'), { type: 'text/plain' });
   try {
-    const file = new File([text], name, { type: 'application/json' });
-    await navigator.share({ files: [file], title: 'Backup Meu Caixa' });
+    if (!(navigator.canShare && navigator.canShare({ files: [file] }))) throw new Error('sem-suporte');
+    await navigator.share({ files: [file], title: 'Backup Meu Caixa', text: 'Backup do Meu Caixa' });
     writeLS(LS_LAST, nowISO());
     renderBackup();
+    toast('Backup enviado.');
   } catch (e) {
-    if (e && e.name === 'AbortError') return;
-    toast('Não deu para enviar daqui. Use "Baixar backup".', 'err');
+    if (e && e.name === 'AbortError') return;          // a pessoa fechou a tela de compartilhar
+    exportBackup();
+    toast('Este aparelho não deixou enviar direto. O backup foi baixado: anexe no WhatsApp pelo clipe (Documento → Downloads).', 'err');
   }
 }
 
@@ -1587,7 +1599,7 @@ function bind() {
   // Backup
   $('btnExport').addEventListener('click', exportBackup);
   try {
-    const probe = new File(['{}'], 'x.json', { type: 'application/json' });
+    const probe = new File(['{}'], 'x.txt', { type: 'text/plain' });
     if (navigator.canShare && navigator.canShare({ files: [probe] })) {
       $('btnShare').hidden = false;
       $('btnShare').addEventListener('click', shareBackup);
