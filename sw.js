@@ -4,7 +4,7 @@
    - Arquivos do próprio app (html, css, js): tenta a internet primeiro, para pegar
      atualizações; sem internet, usa a cópia guardada.
    - Fontes do Google: usa a cópia guardada; se não tiver, baixa e guarda. */
-const CACHE = 'meucaixa-v7';
+const CACHE = 'meucaixa-v8';
 const FILES = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {

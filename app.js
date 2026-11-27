@@ -19,18 +19,26 @@ const DEFAULT_CATS = {
   invest: ['Reserva / poupança', 'Renda fixa (CDB, LCI)', 'Tesouro Direto', 'Fundos', 'Ações', 'Internacional', 'Cripto', 'Outros']
 };
 const INV_KINDS = ['Conta / reserva', 'Renda fixa', 'Fundos', 'Ações', 'Tesouro Direto', 'Internacional', 'Cripto', 'FGTS', 'Outro'];
-const TYPE_LABEL = { gasto: 'Gasto', entrada: 'Entrada', invest: 'Guardei / investi' };
+const TYPE_LABEL = { gasto: 'Gasto', entrada: 'Entrada', invest: 'Guardei / investi', transf: 'Saque / depósito' };
+// Onde o dinheiro fica: conta (banco, Pix, débito, boleto, fatura), dinheiro em espécie e vale
+const WALLETS = { conta: 'Conta', dinheiro: 'Dinheiro', vale: 'Vale' };
+const TRANSF_DIRS = {
+  saque: { label: 'Saque', from: 'conta', to: 'dinheiro', hint: 'Tirei da conta e fiquei com o dinheiro na mão' },
+  deposito: { label: 'Depósito', from: 'dinheiro', to: 'conta', hint: 'Coloquei dinheiro em espécie na conta' }
+};
 const VIEWS = ['resumo', 'lancar', 'extrato', 'patrimonio', 'backup'];
 
 const S = {
   tx: [], inv: [], extraCats: { gasto: [], entrada: [], invest: [] },
   month: '', view: 'resumo', mode: 'loading', ready: false, demo: false,
-  formType: 'gasto', gastoMethod: 'credito', entradaMethod: 'conta',
+  formType: 'gasto', gastoMethod: 'credito', entradaMethod: 'conta', transfDir: 'saque',
   editing: null, invEditing: null, pendingDel: null, pendingInvDel: null,
   filter: { type: 'all', method: 'all', q: '', period: 'month', from: '', to: '', cat: 'all', min: '', max: '', sort: 'date-desc' },
   // Cartão: dia de fechamento, dia de vencimento e se o gasto conta no mês da fatura
   card: { closing: 27, due: 5, byInvoice: true, updatedAt: '' },
   fixed: [],                                       // gastos fixos (salvos)
+  // Saldo inicial: quanto tinha em cada lugar no começo do mês "start"
+  wallets: { start: '', conta: 0, dinheiro: 0, vale: 0, updatedAt: '' },
   sim: { ym: '', salary: null, extra: 0, off: new Set() },   // simulação (temporária)
   fc: null
 };
@@ -121,7 +129,17 @@ function loadLocal() {
   S.inv = Array.isArray(data.inv) ? data.inv.filter((x) => x && typeof x.id === 'string') : [];
   S.extraCats = normalizeCats(data.extraCats);
   S.card = normalizeCard(data.card);
+  S.wallets = normalizeWallets(data.wallets);
   S.fixed = Array.isArray(data.fixed) ? data.fixed.filter((x) => x && typeof x.id === 'string') : [];
+}
+
+function normalizeWallets(w) {
+  w = w && typeof w === 'object' ? w : {};
+  return {
+    start: /^\d{4}-\d{2}$/.test(String(w.start || '')) ? w.start : '',
+    conta: round2(parseNum(w.conta)), dinheiro: round2(parseNum(w.dinheiro)), vale: round2(parseNum(w.vale)),
+    updatedAt: String(w.updatedAt || '')
+  };
 }
 
 function normalizeCard(c) {
@@ -132,7 +150,7 @@ function normalizeCard(c) {
 
 function persist() {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify({ tx: S.tx, inv: S.inv, extraCats: S.extraCats, card: S.card, fixed: S.fixed }));
+    localStorage.setItem(LS_KEY, JSON.stringify({ tx: S.tx, inv: S.inv, extraCats: S.extraCats, card: S.card, fixed: S.fixed, wallets: S.wallets }));
     return true;
   } catch (e) {
     toast('Não foi possível salvar neste aparelho. Baixe um backup agora.', 'err');
@@ -198,6 +216,9 @@ function demoData() {
     add('gasto', 170 * w(i, 5) + (i === 3 ? 520 : 0), 22, 'Lazer / restaurante', i === 3 ? 'Aniversário' : '', 'pix');
     add('gasto', 120 * w(i, 6), 25, 'Lojas / roupas', '', 'credito');
     add('invest', i === 3 ? 100 : 450, 6, 'Renda fixa (CDB, LCI)', 'Aporte do mês', '');
+    add('gasto', 35 * w(i, 7), 14, 'Alimentação / lanche', 'Pastel da feira', 'dinheiro');
+    add('gasto', 60 * w(i, 8), 23, 'Gasolina / transporte', 'Uber', 'dinheiro');
+    if (i % 2 === 0) tx.push({ id: `demo${i}-s`, type: 'transf', amount: 200, date: d(9), cat: '', desc: 'Caixa eletrônico', method: 'saque', from: 'conta', to: 'dinheiro' });
   }
   const p = (name, kind, applied, current, note) => inv.push({ id: 'demo-inv-' + inv.length, name, kind, applied, current, note, updatedAt: todayISO() });
   p('CDB liquidez diária', 'Renda fixa', 3200, 3368.4, 'exemplo');
@@ -211,7 +232,8 @@ function demoData() {
     { id: 'demo-f2', name: 'Seguro', amount: 120 },
     { id: 'demo-f3', name: 'Academia', amount: 90 }
   ];
-  return { tx, inv, fixed };
+  const wallets = { start: addMonths(cur, -5), conta: 900, dinheiro: 120, vale: 0, updatedAt: '' };
+  return { tx, inv, fixed, wallets };
 }
 let DEMO = null;
 const live = (arr) => arr.filter((x) => x && !x.deleted);
@@ -252,6 +274,75 @@ function txMonth(t) {
 }
 
 const monthTx = (ym) => src().tx.filter((t) => txMonth(t) === ym);
+
+// ------------------------------------------------------------------ conta x dinheiro
+const walletCfg = () => (S.demo ? src().wallets : S.wallets);
+
+/** Em qual lugar o lançamento mexe (saque/depósito mexe em dois) */
+function walletOf(t) {
+  if (t.type === 'transf') return null;
+  if (t.method === 'dinheiro') return 'dinheiro';
+  if (t.method === 'vale') return 'vale';
+  return 'conta';                       // Pix, débito, boleto, fatura do cartão, guardado, recebido na conta
+}
+
+/** Quanto o lançamento soma (+) ou tira (−) de um lugar */
+function walletDelta(t, w) {
+  const a = parseNum(t.amount);
+  if (t.type === 'transf') return (t.to === w ? a : 0) - (t.from === w ? a : 0);
+  if (walletOf(t) !== w) return 0;
+  return t.type === 'entrada' ? a : -a;
+}
+
+/** Dia em que o dinheiro realmente sai: no crédito, é o vencimento da fatura */
+function effectiveDate(t) {
+  if (!isCredit(t)) return t.date;
+  const ym = txMonth(t);
+  return S.card.byInvoice ? invoiceDates(ym).due : dateOf(ym, Number(String(t.date).slice(8, 10)) || 1);
+}
+
+/** Lugares usados: conta e dinheiro sempre; vale só se for usado */
+function activeWallets() {
+  const cfg = walletCfg();
+  const usesVale = cfg.vale || src().tx.some((t) => t.method === 'vale');
+  return usesVale ? ['conta', 'dinheiro', 'vale'] : ['conta', 'dinheiro'];
+}
+
+/** Resumo de cada lugar no mês ym: quanto tinha, o que entrou e saiu, e quanto sobrou */
+function walletReport(ym) {
+  const cfg = walletCfg();
+  const all = src().tx;
+  const list = all.filter((t) => txMonth(t) === ym);
+  const today = todayISO();
+  const isCur = ym === today.slice(0, 7);
+  const hasStart = !!cfg.start && ym >= cfg.start;
+  return activeWallets().map((w) => {
+    const r = { w, name: WALLETS[w], entrou: 0, gastos: 0, fatura: 0, guardado: 0, transIn: 0, transOut: 0, net: 0, netNow: 0, pendingOut: 0, pendingIn: 0, start: null };
+    if (hasStart) {
+      r.start = parseNum(cfg[w]) + all
+        .filter((t) => { const m = txMonth(t); return m >= cfg.start && m < ym; })
+        .reduce((s, t) => s + walletDelta(t, w), 0);
+    }
+    for (const t of list) {
+      const a = parseNum(t.amount);
+      const d = walletDelta(t, w);
+      if (!d) continue;
+      if (t.type === 'transf') { if (d > 0) r.transIn += a; else r.transOut += a; }
+      else if (t.type === 'entrada') r.entrou += a;
+      else if (t.type === 'invest') r.guardado += a;
+      else if (isCredit(t)) r.fatura += a;
+      else r.gastos += a;
+      r.net += d;
+      if (!isCur || effectiveDate(t) <= today) r.netNow += d;
+      else if (d < 0) r.pendingOut -= d; else r.pendingIn += d;
+    }
+    r.end = r.start === null ? null : r.start + r.net;
+    r.now = r.start === null ? null : r.start + r.netNow;
+    r.isCur = isCur;
+    r.isFuture = ym > today.slice(0, 7);
+    return r;
+  });
+}
 
 function sums(list) {
   const s = { entrou: 0, saiu: 0, investiu: 0, byMethod: {}, byCat: {}, inCat: {}, count: list.length, credito: 0 };
@@ -346,6 +437,10 @@ function trendSvg(ym) {
 }
 
 function txLine(t) {
+  if (t.type === 'transf') {
+    const d = TRANSF_DIRS[t.method] || { label: 'Transferência', from: t.from, to: t.to };
+    return { title: t.desc || d.label, meta: `${d.label} · ${WALLETS[t.from] || ''} → ${WALLETS[t.to] || ''}`, amount: `⇄ ${brl(parseNum(t.amount))}` };
+  }
   const isParc = parseNum(t.parcelas) > 1;
   const method = t.type === 'gasto' ? GASTO_METHODS[t.method] : t.type === 'entrada' ? ENTRADA_METHODS[t.method] : '';
   const fat = isCredit(t) && S.card.byInvoice ? `fatura ${shortMonth(txMonth(t))}` : '';
@@ -393,7 +488,12 @@ function renderResumo() {
   $('kInv').textContent = brl(s.investiu);
   $('kInvSub').textContent = s.entrou && s.investiu ? `${pct(s.investiu / s.entrou)} do que entrou` : 'nada guardado';
   $('kLeft').textContent = brl(s.sobra);
-  $('kLeftSub').textContent = s.entrou ? `${pct(s.sobra / s.entrou)} do que entrou` : 'entrou − gastos − guardado';
+  const wr = walletReport(S.month);
+  const wc = wr.find((r) => r.w === 'conta');
+  const wd = wr.find((r) => r.w === 'dinheiro');
+  $('kLeftSub').textContent = s.count
+    ? `conta ${brl(wc.net)} · dinheiro ${brl(wd.net)}`
+    : 'entrou − gastos − guardado';
   $('kLeftCard').classList.toggle('neg', s.sobra < -0.004);
 
   // Aviso principal: saiu mais do que entrou?
@@ -421,6 +521,7 @@ function renderResumo() {
       <small>Depois dos gastos e do que você guardou, sobraram ${esc(brl(s.sobra))}.</small></div>`;
   }
 
+  renderWallets();
   $('byMethod').innerHTML = bars(sortRows(s.byMethod, GASTO_METHODS), 'f-ink', s.saiu);
   $('byCat').innerHTML = bars(sortRows(s.byCat).slice(0, 8), 'f-out', s.saiu);
   $('byIncome').innerHTML = bars(sortRows(s.inCat), 'f-in', s.entrou);
@@ -435,6 +536,52 @@ function renderResumo() {
     <div class="bar-h"><span>Valor aplicado</span><b>${brl(applied)}</b></div>
     <div class="bar-h"><span>Rendimento</span><b class="${current - applied >= 0 ? 'up' : 'down'}">${current - applied >= 0 ? '+' : '−'} ${brl(Math.abs(current - applied))}</b></div>`
     : '<p class="empty">Cadastre seus investimentos e reservas na aba Patrimônio.</p>';
+}
+
+function renderWallets() {
+  const rep = walletReport(S.month);
+  const cfg = walletCfg();
+  const hasStart = rep.some((r) => r.start !== null);
+  const line = (label, v, cls = '') => (v ? `<div class="wl ${cls}"><span>${esc(label)}</span><b>${v > 0 && cls === 'plus' ? '+' : '−'} ${esc(brl(Math.abs(v)))}</b></div>` : '');
+
+  $('wallets').innerHTML = rep.map((r) => {
+    let big;
+    let bigLabel;
+    if (r.start === null) { big = r.net; bigLabel = r.net >= 0 ? 'Sobrou no mês' : 'Faltou no mês'; }
+    else if (r.isCur) { big = r.now; bigLabel = 'Tem agora'; }
+    else if (r.isFuture) { big = r.end; bigLabel = 'Previsto no fim do mês'; }
+    else { big = r.end; bigLabel = 'Terminou o mês com'; }
+    const neg = big < -0.004;
+    const rows = [
+      r.start !== null ? `<div class="wl start"><span>Tinha no começo do mês</span><b>${esc(brl(r.start))}</b></div>` : '',
+      line(r.w === 'conta' ? 'Entrou na conta' : r.w === 'vale' ? 'Entrou no vale' : 'Recebeu em dinheiro', r.entrou, 'plus'),
+      line(r.w === 'conta' ? 'Pix, débito e boleto' : 'Gastou', r.gastos, 'minus'),
+      line(S.card.byInvoice ? 'Fatura do cartão' : 'Compras no crédito', r.fatura, 'minus'),
+      line('Guardado / investido', r.guardado, 'minus'),
+      line(r.w === 'conta' ? 'Depósitos (dinheiro → conta)' : 'Saques (conta → dinheiro)', r.transIn, 'plus'),
+      line(r.w === 'conta' ? 'Saques (conta → dinheiro)' : 'Depósitos (dinheiro → conta)', r.transOut, 'minus')
+    ].join('');
+    let foot = '';
+    if (r.isCur && r.start !== null && (r.pendingOut || r.pendingIn)) {
+      foot = `<p class="wl-foot">Ainda neste mês: ${r.pendingOut ? `−${esc(brl(r.pendingOut))}` : ''}${r.pendingOut && r.pendingIn ? ' e ' : ''}${r.pendingIn ? `+${esc(brl(r.pendingIn))}` : ''} · fim do mês: <b>${esc(brl(r.end))}</b></p>`;
+    } else if (r.isCur && r.start === null && (r.pendingOut || r.pendingIn)) {
+      foot = `<p class="wl-foot">Inclui ${r.pendingOut ? `${esc(brl(r.pendingOut))} que ainda vai sair` : ''}${r.pendingOut && r.pendingIn ? ' e ' : ''}${r.pendingIn ? `${esc(brl(r.pendingIn))} que ainda vai entrar` : ''} até o fim do mês.</p>`;
+    }
+    const empty = !rows && r.start === null;
+    return `<div class="wallet w-${r.w}${neg ? ' neg' : ''}">
+      <div class="w-top"><span class="w-name"><i></i>${esc(r.name)}</span><small>${esc(bigLabel)}</small></div>
+      <div class="w-big">${esc(brl(big))}</div>
+      <div class="w-lines">${empty ? '<p class="empty">Nada neste mês.</p>' : rows}</div>
+      ${foot}
+    </div>`;
+  }).join('');
+
+  $('walletSub').textContent = hasStart ? 'quanto tem em cada lugar' : 'o que entrou e saiu de cada lugar no mês';
+  $('walletHint').innerHTML = S.demo ? '' : hasStart
+    ? `Saldo contado desde ${esc(monthTitle(cfg.start))}. Se não bater com o banco ou com a carteira, <button type="button" class="linkish" data-goto="backup">ajuste o saldo inicial</button>.`
+    : cfg.start && S.month < cfg.start
+      ? `O saldo começa a ser contado em ${esc(monthTitle(cfg.start))}.`
+      : `Para ver <b>quanto você tem</b> em cada lugar (e não só o que sobrou no mês), <button type="button" class="linkish" data-goto="backup">informe quanto tinha</button> na conta e em dinheiro.`;
 }
 
 function fillCatSelect() {
@@ -452,21 +599,30 @@ function renderForm() {
 
   const isGasto = S.formType === 'gasto';
   const isEntrada = S.formType === 'entrada';
-  $('methodWrap').hidden = !(isGasto || isEntrada);
-  $('methodLabel').textContent = isGasto ? 'Forma de pagamento' : 'Como recebeu';
-  const methods = isGasto ? GASTO_METHODS : ENTRADA_METHODS;
-  const cur = isGasto ? S.gastoMethod : S.entradaMethod;
-  $('fMethods').innerHTML = Object.entries(methods).map(([k, v]) =>
-    `<button type="button" class="chip${k === cur ? ' on' : ''}" data-method="${k}">${esc(v)}</button>`).join('');
+  const isTransf = S.formType === 'transf';
+  $('catWrap').hidden = isTransf;
+  $('methodWrap').hidden = !(isGasto || isEntrada || isTransf);
+  $('methodLabel').textContent = isGasto ? 'Forma de pagamento' : isEntrada ? 'Como recebeu' : 'O que você fez';
+  if (isTransf) {
+    $('fMethods').innerHTML = Object.entries(TRANSF_DIRS).map(([k, v]) =>
+      `<button type="button" class="chip${k === S.transfDir ? ' on' : ''}" data-method="${k}">${esc(v.label)}: ${esc(WALLETS[v.from])} → ${esc(WALLETS[v.to])}</button>`).join('');
+  } else {
+    const methods = isGasto ? GASTO_METHODS : ENTRADA_METHODS;
+    const cur = isGasto ? S.gastoMethod : S.entradaMethod;
+    $('fMethods').innerHTML = Object.entries(methods).map(([k, v]) =>
+      `<button type="button" class="chip${k === cur ? ' on' : ''}" data-method="${k}">${esc(v)}</button>`).join('');
+  }
 
   const showParc = isGasto && S.gastoMethod === 'credito' && !S.editing;
   $('parcWrap').hidden = !showParc;
   updateParcInfo();
 
-  $('saveTx').textContent = S.editing ? 'Salvar alteração' : isGasto ? 'Salvar gasto' : isEntrada ? 'Salvar entrada' : 'Salvar valor guardado';
+  $('saveTx').textContent = S.editing ? 'Salvar alteração' : isGasto ? 'Salvar gasto' : isEntrada ? 'Salvar entrada' : isTransf ? `Salvar ${TRANSF_DIRS[S.transfDir].label.toLowerCase()}` : 'Salvar valor guardado';
   $('saveTx').className = 'btn block ' + (isGasto ? 'danger' : isEntrada ? 'primary' : 'dark');
   $('editBar').hidden = !S.editing;
-  $('formHint').textContent = S.formType === 'invest'
+  $('formHint').textContent = isTransf
+    ? `${TRANSF_DIRS[S.transfDir].hint}. Não conta como gasto nem como entrada: só muda o dinheiro de lugar.`
+    : S.formType === 'invest'
     ? 'Use para o dinheiro que você separou no mês (aporte, poupança). Ele sai do "sobrou", mas não conta como gasto.'
     : isGasto && S.gastoMethod === 'credito'
       ? 'Lance cada compra do cartão aqui, com a data da compra. Não lance a fatura inteira de novo, senão o gasto conta duas vezes.'
@@ -673,15 +829,15 @@ function buildReport() {
       const ms = sums(ordered.filter((x) => txMonth(x) === lastMonth));
       body += `<tr class="m-row"><td colspan="4">${esc(monthTitle(lastMonth))}</td><td class="n">${esc(brl(ms.entrou - ms.saiu - ms.investiu))}</td></tr>`;
     }
-    const method = t.type === 'gasto' ? GASTO_METHODS[t.method] : t.type === 'entrada' ? ENTRADA_METHODS[t.method] : 'Guardado';
+    const method = t.type === 'gasto' ? GASTO_METHODS[t.method] : t.type === 'entrada' ? ENTRADA_METHODS[t.method] : t.type === 'transf' ? `${WALLETS[t.from]} → ${WALLETS[t.to]}` : 'Guardado';
     const extra = [parseNum(t.parcelas) > 1 ? `parcela ${t.parcela}/${t.parcelas}` : '', isCredit(t) && S.card.byInvoice ? `fatura ${shortMonth(txMonth(t))}` : ''].filter(Boolean).join(' · ');
-    const sign = t.type === 'entrada' ? '+' : '−';
+    const sign = t.type === 'entrada' ? '+' : t.type === 'transf' ? '⇄' : '−';
     body += `<tr>
       <td>${esc(fmtBR(t.date))}</td>
       <td>${esc(t.desc || '—')}${extra ? `<br><small style="color:#5B6A86">${esc(extra)}</small>` : ''}</td>
       <td>${esc(t.cat || TYPE_LABEL[t.type])}</td>
       <td>${esc(method || '')}</td>
-      <td class="n ${t.type === 'entrada' ? 'pos' : 'neg'}">${sign} ${esc(brl(parseNum(t.amount)))}</td></tr>`;
+      <td class="n ${t.type === 'entrada' ? 'pos' : t.type === 'transf' ? '' : 'neg'}">${sign} ${esc(brl(parseNum(t.amount)))}</td></tr>`;
   }
 
   $('report').innerHTML = `
@@ -700,10 +856,27 @@ function buildReport() {
       <div><h2>Gastos por categoria</h2><table><thead><tr><th>Categoria</th><th class="n">Valor</th><th class="n">%</th></tr></thead><tbody>${rows(s.byCat, null, s.saiu)}</tbody></table></div>
       <div><h2>Gastos por forma de pagamento</h2><table><thead><tr><th>Forma</th><th class="n">Valor</th><th class="n">%</th></tr></thead><tbody>${rows(s.byMethod, GASTO_METHODS, s.saiu)}</tbody></table></div>
     </div>
+    ${walletTableHtml(list)}
     <h2>Lançamentos</h2>
     <table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Forma</th><th class="n">Valor</th></tr></thead><tbody>${body}</tbody></table>
     <p class="r-foot">Meu Caixa · relatório gerado a partir dos dados deste aparelho.</p>`;
   return list.length;
+}
+
+/** Tabela do PDF: quanto entrou e saiu da conta, do dinheiro e do vale */
+function walletTableHtml(list) {
+  const rows = activeWallets().map((w) => {
+    let inn = 0;
+    let out = 0;
+    list.forEach((t) => { const d = walletDelta(t, w); if (d > 0) inn += d; else out -= d; });
+    return { w, inn, out };
+  }).filter((r) => r.inn || r.out);
+  if (!rows.length) return '';
+  return `<h2>Por onde passou o dinheiro</h2>
+    <table><thead><tr><th>Lugar</th><th class="n">Entrou</th><th class="n">Saiu</th><th class="n">Diferença</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td>${esc(WALLETS[r.w])}</td><td class="n pos">${esc(brl(r.inn))}</td><td class="n neg">${esc(brl(r.out))}</td><td class="n ${r.inn - r.out < 0 ? 'neg' : 'pos'}">${esc(brl(r.inn - r.out))}</td></tr>`).join('')}
+    </tbody></table>
+    <p class="r-filters" style="margin-top:4px">Conta = Pix, débito, boleto, fatura do cartão e valores guardados. Saques e depósitos aparecem nos dois lados.</p>`;
 }
 
 function exportPdf() {
@@ -777,6 +950,7 @@ function renderAll() {
   renderBackup();
   renderFatura();
   renderCardSettings();
+  renderWalletSettings();
   $('storeNote').textContent = 'Salvo neste aparelho, funciona sem internet. Use a aba Ajustes para fazer backup e juntar com outros aparelhos.';
 }
 
@@ -955,6 +1129,43 @@ function onFixedToggle(e) {
   updateForecastCalc();
 }
 
+function renderWalletSettings() {
+  const f = $('walletForm');
+  if (f.contains(document.activeElement)) return;
+  const w = S.wallets;
+  $('wStart').value = w.start || todayISO().slice(0, 7);
+  $('wConta').value = w.start ? moneyTxt(w.conta) : '';
+  $('wDinheiro').value = w.start ? moneyTxt(w.dinheiro) : '';
+  $('wVale').value = w.start && w.vale ? moneyTxt(w.vale) : '';
+  $('wClear').hidden = !w.start;
+}
+
+function saveWallets(e) {
+  e.preventDefault();
+  if (S.demo) { toast('Saia dos dados de exemplo antes de mudar os ajustes.', 'err'); return; }
+  const start = $('wStart').value;
+  if (!/^\d{4}-\d{2}$/.test(start)) { toast('Escolha o mês.', 'err'); $('wStart').focus(); return; }
+  S.wallets = {
+    start,
+    conta: round2(parseNum($('wConta').value)),
+    dinheiro: round2(parseNum($('wDinheiro').value)),
+    vale: round2(parseNum($('wVale').value)),
+    updatedAt: nowISO()
+  };
+  persist();
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  renderAll();
+  toast(`Saldo inicial salvo. Contando a partir de ${monthTitle(start)}.`);
+}
+
+function clearWallets() {
+  if (S.demo) return;
+  S.wallets = { start: '', conta: 0, dinheiro: 0, vale: 0, updatedAt: nowISO() };
+  persist();
+  renderAll();
+  toast('Saldo inicial removido. O Resumo volta a mostrar só o que sobrou no mês.');
+}
+
 function renderCardSettings() {
   const f = $('cardForm');
   if (!f.contains(document.activeElement)) {
@@ -1041,7 +1252,7 @@ function buildBackup() {
   const stamp = `${todayISO()}_${String(now.getHours()).padStart(2, '0')}h${String(now.getMinutes()).padStart(2, '0')}`;
   const data = {
     app: 'meu-caixa', version: 1, device, exportedAt: now.toISOString(),
-    tx: S.tx, inv: S.inv, extraCats: S.extraCats, card: S.card, fixed: S.fixed
+    tx: S.tx, inv: S.inv, extraCats: S.extraCats, card: S.card, fixed: S.fixed, wallets: S.wallets
   };
   const name = `meucaixa-${slug(device) || 'backup'}-${stamp}.json`;
   return { name, text: JSON.stringify(data, null, 1) };
@@ -1094,6 +1305,7 @@ async function importBackups(files) {
       for (const k of ['added', 'updated', 'removed', 'same']) { tot.tx[k] += a[k]; tot.inv[k] += b[k]; }
       if (data.card && String(data.card.updatedAt || '') > S.card.updatedAt) S.card = normalizeCard(data.card);
       if (Array.isArray(data.fixed)) S.fixed = mergeList(S.fixed, data.fixed).list;
+      if (data.wallets && String(data.wallets.updatedAt || '') > S.wallets.updatedAt) S.wallets = normalizeWallets(data.wallets);
       const cats = normalizeCats(data.extraCats);
       for (const k of Object.keys(cats)) S.extraCats[k] = [...new Set([...(S.extraCats[k] || []), ...cats[k]])];
       ok.push(data.device ? `${f.name} (${data.device})` : f.name);
@@ -1151,7 +1363,7 @@ async function submitTx(e) {
   const amount = round2(parseNum($('fAmount').value));
   if (!(amount > 0)) { toast('Digite o valor.', 'err'); $('fAmount').focus(); return; }
   const date = $('fDate').value || todayISO();
-  let cat = $('fCat').value;
+  let cat = S.formType === 'transf' ? '' : $('fCat').value;
   if (cat === '__new') {
     cat = $('fCatNew').value.trim();
     if (!cat) { toast('Digite o nome da nova categoria.', 'err'); $('fCatNew').focus(); return; }
@@ -1161,23 +1373,25 @@ async function submitTx(e) {
     }
   }
   const type = S.formType;
-  const method = type === 'gasto' ? S.gastoMethod : type === 'entrada' ? S.entradaMethod : '';
+  const method = type === 'gasto' ? S.gastoMethod : type === 'entrada' ? S.entradaMethod : type === 'transf' ? S.transfDir : '';
   const desc = $('fDesc').value.trim();
+  const move = type === 'transf' ? { from: TRANSF_DIRS[method].from, to: TRANSF_DIRS[method].to } : {};
   const btn = $('saveTx');
   btn.disabled = true;
   try {
     if (S.editing) {
       const old = src().tx.find((t) => t.id === S.editing);
       if (!old) throw new Error('missing');
-      await store.putTx({ ...old, type, amount, date, cat, desc, method });
+      const { from: _f, to: _t, ...rest } = old;
+      await store.putTx({ ...rest, type, amount, date, cat, desc, method, ...move });
       S.editing = null;
       toast('Lançamento atualizado.');
     } else {
       const n = type === 'gasto' && method === 'credito' ? (parseInt($('fParc').value, 10) || 1) : 1;
-      const items = buildItems({ type, amount, date, cat, desc, method }, n);
+      const items = buildItems({ type, amount, date, cat, desc, method, ...move }, n);
       for (const it of items) await store.putTx(it);
       const fatMsg = method === 'credito' && S.card.byInvoice && type === 'gasto' ? ` Vai para a fatura de ${monthTitle(txMonth(items[0]))}.` : '';
-      toast((n > 1 ? `Compra lançada em ${n} parcelas.` : type === 'entrada' ? `Entrada de ${brl(amount)} salva.` : type === 'gasto' ? `Gasto de ${brl(amount)} salvo.` : `${brl(amount)} guardados.`) + fatMsg);
+      toast((n > 1 ? `Compra lançada em ${n} parcelas.` : type === 'entrada' ? `Entrada de ${brl(amount)} salva.` : type === 'gasto' ? `Gasto de ${brl(amount)} salvo.` : type === 'transf' ? `${TRANSF_DIRS[method].label} de ${brl(amount)} salvo.` : `${brl(amount)} guardados.`) + fatMsg);
     }
     $('fAmount').value = '';
     $('fDesc').value = '';
@@ -1185,7 +1399,7 @@ async function submitTx(e) {
     $('fParc').value = '1';
     if (date.slice(0, 7) !== S.month) S.month = date.slice(0, 7);
     renderAll();
-    $('fCat').value = cat;
+    if (cat) $('fCat').value = cat;
     $('fCatNewWrap').hidden = true;
   } catch (err) {
     /* aviso já mostrado pelo armazenamento */
@@ -1201,12 +1415,13 @@ function startEdit(id) {
   S.formType = t.type;
   if (t.type === 'gasto' && t.method) S.gastoMethod = t.method;
   if (t.type === 'entrada' && t.method) S.entradaMethod = t.method;
+  if (t.type === 'transf' && TRANSF_DIRS[t.method]) S.transfDir = t.method;
   setView('lancar');
   $('fAmount').value = toInput(parseNum(t.amount));
   $('fDate').value = t.date;
   $('fDesc').value = t.desc || '';
   fillCatSelect();
-  $('fCat').value = catsFor(t.type).includes(t.cat) ? t.cat : 'Outros';
+  if (t.type !== 'transf') $('fCat').value = catsFor(t.type).includes(t.cat) ? t.cat : 'Outros';
   $('fCatNewWrap').hidden = true;
 }
 
@@ -1313,7 +1528,9 @@ function bind() {
   $('fMethods').addEventListener('click', (e) => {
     const c = e.target.closest('[data-method]');
     if (!c) return;
-    if (S.formType === 'gasto') S.gastoMethod = c.dataset.method; else S.entradaMethod = c.dataset.method;
+    if (S.formType === 'gasto') S.gastoMethod = c.dataset.method;
+    else if (S.formType === 'transf') S.transfDir = c.dataset.method;
+    else S.entradaMethod = c.dataset.method;
     renderForm();
   });
   $('fCat').addEventListener('change', () => {
@@ -1383,6 +1600,10 @@ function bind() {
     if (files.length) await importBackups(files);
   });
   $('deviceName').addEventListener('input', (e) => writeLS(LS_DEVICE, e.target.value.trim()));
+
+  // Saldo inicial
+  $('walletForm').addEventListener('submit', saveWallets);
+  $('wClear').addEventListener('click', clearWallets);
 
   // Cartão
   $('cardForm').addEventListener('submit', saveCard);

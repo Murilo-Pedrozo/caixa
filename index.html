@@ -71,6 +71,12 @@
       <div class="kpi left" id="kLeftCard"><div class="k">Sobrou</div><div class="v" id="kLeft">R$ 0,00</div><small id="kLeftSub">entrou − gastos − guardado</small></div>
     </div>
 
+    <div class="card" id="walletCard">
+      <div class="card-h"><h2>Onde está o seu dinheiro</h2><small id="walletSub">conta e dinheiro separados</small></div>
+      <div class="wallets" id="wallets"></div>
+      <p class="hint" id="walletHint"></p>
+    </div>
+
     <div class="card fatura" id="faturaCard">
       <div class="card-h"><h2>Fatura do cartão</h2><small id="fatStatus"></small></div>
       <div class="fat-grid">
@@ -167,7 +173,8 @@
         <div class="seg" role="tablist" aria-label="Tipo de lançamento">
           <button type="button" data-type="gasto" class="on">Gasto</button>
           <button type="button" data-type="entrada">Entrada</button>
-          <button type="button" data-type="invest">Guardei / investi</button>
+          <button type="button" data-type="invest">Guardei</button>
+          <button type="button" data-type="transf">Saque / depósito</button>
         </div>
 
         <div class="form">
@@ -179,7 +186,7 @@
             <label class="label" for="fDate">Data</label>
             <input id="fDate" class="in" type="date">
           </div>
-          <div>
+          <div id="catWrap">
             <label class="label" for="fCat">Categoria</label>
             <select id="fCat" class="in"></select>
           </div>
@@ -346,6 +353,33 @@
 
   <!-- ===================== BACKUP ===================== -->
   <section class="view" id="v-backup" hidden>
+    <form class="card" id="walletForm" autocomplete="off">
+      <div class="card-h"><h2>Quanto você tinha</h2><small>saldo inicial de cada lugar</small></div>
+      <p class="hint" style="margin:0 0 12px">Diga quanto tinha <b>no começo de um mês</b> na conta e em dinheiro. A partir daí o sistema vai somando sozinho e mostra quanto você tem agora em cada lugar.</p>
+      <div class="form" style="margin-top:0">
+        <div class="full">
+          <label class="label" for="wStart">No começo de</label>
+          <input id="wStart" class="in" type="month">
+        </div>
+        <div>
+          <label class="label" for="wConta">Na conta</label>
+          <div class="money-in"><span>R$</span><input id="wConta" class="in" type="text" inputmode="decimal" placeholder="0,00"></div>
+        </div>
+        <div>
+          <label class="label" for="wDinheiro">Em dinheiro (na carteira)</label>
+          <div class="money-in"><span>R$</span><input id="wDinheiro" class="in" type="text" inputmode="decimal" placeholder="0,00"></div>
+        </div>
+        <div>
+          <label class="label" for="wVale">No vale-alimentação</label>
+          <div class="money-in"><span>R$</span><input id="wVale" class="in" type="text" inputmode="decimal" placeholder="0,00"></div>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button type="submit" class="btn primary">Salvar saldo inicial</button>
+        <button type="button" class="btn ghost" id="wClear" hidden>Não usar saldo inicial</button>
+      </div>
+    </form>
+
     <form class="card" id="cardForm" autocomplete="off">
       <div class="card-h"><h2>Cartão de crédito</h2><small>fechamento e vencimento da fatura</small></div>
       <div class="form" style="margin-top:0">
